@@ -74,7 +74,7 @@
  *
  * Later changes can be tracked in SCM.
  */
-// #define DEBUG
+
 #include <linux/kernel.h>
 #include <linux/input.h>
 #include <linux/rcupdate.h>
@@ -535,12 +535,14 @@ static const struct xboxone_init_packet xboxone_init_packets[] = {
 	XBOXONE_INIT_PKT(0x0e6f, 0x02ab, xboxone_pdp_init2),
 	XBOXONE_INIT_PKT(0x0e6f, 0x02a4, xboxone_pdp_init1),
 	XBOXONE_INIT_PKT(0x0e6f, 0x02a4, xboxone_pdp_init2),
+	
 	XBOXONE_INIT_PKT(0x0e6f, 0x02a6, xboxone_pdp_init1),
 	XBOXONE_INIT_PKT(0x0e6f, 0x02a6, xboxone_pdp_init2),
 	XBOXONE_INIT_PKT(0x0e6f, 0x02a8, xboxone_pdp_init1),
 	XBOXONE_INIT_PKT(0x0e6f, 0x02a8, xboxone_pdp_init2),
 	XBOXONE_INIT_PKT(0x0e6f, 0x02b8, xboxone_pdp_init1),
 	XBOXONE_INIT_PKT(0x0e6f, 0x02b8, xboxone_pdp_init2),
+	
 	XBOXONE_INIT_PKT(0x24c6, 0x541a, xboxone_rumblebegin_init),
 	XBOXONE_INIT_PKT(0x24c6, 0x542a, xboxone_rumblebegin_init),
 	XBOXONE_INIT_PKT(0x24c6, 0x543a, xboxone_rumblebegin_init),
@@ -939,13 +941,6 @@ static void xpad_irq_in(struct urb *urb)
 		goto exit;
 	}
 
-#if defined(DEBUG_VERBOSE)
-	/* If you set rowsize to larger than 32 it defaults to 16?
-	 * Otherwise I would set it to XPAD_PKT_LEN                  V
-	 */
-	print_hex_dump(KERN_DEBUG, "xpad-dbg: ", DUMP_PREFIX_OFFSET, 32, 1, xpad->idata, XPAD_PKT_LEN, 0);
-#endif
-
 	switch (xpad->xtype) {
 	case XTYPE_XBOX360:
 		xpad360_process_packet(xpad, xpad->dev, 0, xpad->idata);
@@ -1243,15 +1238,34 @@ static int xpad_play_effect(struct input_dev *dev, void *data, struct ff_effect 
 	struct xpad_output_packet *packet = &xpad->out_packets[XPAD_OUT_FF_IDX];
 	__u16 strong;
 	__u16 weak;
+	__u16 direction;
+	__u16 max;
+	int fraction_TL, fraction_TR;
+	__u8 index_left;
+	__u8 index_right;
 	int retval;
 	unsigned long flags;
+	const int fractions_milli[]
+		= {1000, 962, 854, 691, 500, 309, 146, 38, 0};
+	const int proportions_idx_max = 8;
+	enum {
+		DIRECTION_DOWN  = 0x0000,
+		DIRECTION_LEFT  = 0x4000,
+		DIRECTION_UP    = 0x8000,
+		DIRECTION_RIGHT = 0xC000,
+	};
 
-	if (effect->type != FF_RUMBLE)
+	if (effect->type != FF_RUMBLE){
 		return 0;
+	}
 
 	strong = effect->u.rumble.strong_magnitude;
 	weak = effect->u.rumble.weak_magnitude;
-
+	direction = effect->direction;
+	//printk("Direction: %d\n", direction);
+	//strong = 6400; These are 0 on rfactor2
+	//weak = 6400;
+	
 	spin_lock_irqsave(&xpad->odata_lock, flags);
 
 	switch (xpad->xtype) {
@@ -1297,16 +1311,35 @@ static int xpad_play_effect(struct input_dev *dev, void *data, struct ff_effect 
 		break;
 
 	case XTYPE_XBOXONE:
+		/*weak = ((weak & 0xFF00) >> 8);
+		strong = ((strong & 0xFF00) >> 8);*/
+		weak = (weak / 512);
+		strong = (strong / 512);
+		fraction_TL = 0;
+		fraction_TR = 0;
+		if (DIRECTION_LEFT <= direction && direction <= DIRECTION_RIGHT) {
+			index_left = (direction - DIRECTION_LEFT) >> 12;
+			index_right = proportions_idx_max - index_left;
+
+			fraction_TL = fractions_milli[index_left];
+			fraction_TR = fractions_milli[index_right];
+		}
+		//max = weak > strong ? (weak >> 1) : (strong >> 1);
+		max = weak > strong ? weak : strong;
 		packet->data[0] = 0x09; /* activate rumble */
 		packet->data[1] = 0x00;
 		packet->data[2] = xpad->odata_serial++;
 		packet->data[3] = 0x09;
 		packet->data[4] = 0x00;
 		packet->data[5] = 0x0F;
-		packet->data[6] = 0x00;
-		packet->data[7] = 0x00;
-		packet->data[8] = strong / 512;	/* left actuator */
-		packet->data[9] = weak / 512;	/* right actuator */
+		/*packet->data[6] = (strong || weak)?0x04:0x00;
+		packet->data[7] = (strong || weak)?0x04:0x00;*/
+		packet->data[6] = (__u8)((fraction_TL * max) / 100);
+		packet->data[7] = (__u8)((fraction_TR * max) / 100);
+		packet->data[8] = strong;	/* left actuator */
+		packet->data[9] = weak;	/* right actuator */
+		//packet->data[8] = strong / 512;	/* left actuator */
+		//packet->data[9] = weak / 512;	/* right actuator */
 		packet->data[10] = 0xFF; /* on period */
 		packet->data[11] = 0x00; /* off period */
 		packet->data[12] = 0xFF; /* repeat count */
@@ -1962,6 +1995,7 @@ static struct usb_driver xpad_driver = {
 	.disconnect	= xpad_disconnect,
 	.suspend	= xpad_suspend,
 	.resume		= xpad_resume,
+	.reset_resume	= xpad_resume,
 	.id_table	= xpad_table,
 };
 
