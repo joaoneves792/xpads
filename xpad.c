@@ -1263,8 +1263,8 @@ static int xpad_play_effect(struct input_dev *dev, void *data, struct ff_effect 
 	weak = effect->u.rumble.weak_magnitude;
 	direction = effect->direction;
 	//printk("Direction: %d\n", direction);
-	//strong = 6400; These are 0 on rfactor2
-	//weak = 6400;
+	//strong = (direction)?1200:0; //These are 0 on rfactor2
+	//weak = (direction)?1200:0;
 	
 	spin_lock_irqsave(&xpad->odata_lock, flags);
 
@@ -1311,10 +1311,10 @@ static int xpad_play_effect(struct input_dev *dev, void *data, struct ff_effect 
 		break;
 
 	case XTYPE_XBOXONE:
-		/*weak = ((weak & 0xFF00) >> 8);
-		strong = ((strong & 0xFF00) >> 8);*/
-		weak = (weak / 512);
-		strong = (strong / 512);
+		weak = ((weak & 0xFF00) >> 8);
+		strong = ((strong & 0xFF00) >> 8);
+                /*weak = (weak / 512);
+		strong = (strong / 512);*/
 		fraction_TL = 0;
 		fraction_TR = 0;
 		if (DIRECTION_LEFT <= direction && direction <= DIRECTION_RIGHT) {
