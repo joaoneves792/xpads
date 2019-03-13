@@ -1,3 +1,8 @@
+# Fork of https://github.com/paroj/xpad
+Features:
+Enabled trigger force feedback 
+(credits go to the developer of xpadneo, I just ported it to the wired driver)
+
 # Updated Xpad Linux Kernel Driver
 Driver for the Xbox/ Xbox 360/ Xbox 360 Wireless/ Xbox One Controllers
 
